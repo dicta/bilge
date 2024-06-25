@@ -37,6 +37,7 @@ default = []
 # Enables constness, see README.md: only usable with nightly-2022-11-03
 nightly = ["arbitrary-int/const_convert_and_const_trait_impl", "bilge-impl/nightly"]
 serde = ["bilge-impl/serde", "arbitrary-int/serde"]
+cbindgen = ["bilge-impl/cbindgen"]
 
 [dependencies]
 # cargo clippy workaround, we can't add `path = "../arbitrary-int"` as well
