@@ -1,6 +1,7 @@
 use proc_macro2::{Ident, TokenStream};
+use proc_macro_error::abort_call_site;
 use quote::quote;
-use syn::{Attribute, Field, Item, ItemEnum, ItemStruct, Type};
+use syn::{Attribute, Expr, Field, Item, ItemEnum, ItemStruct, Lit, Type};
 
 use crate::shared::{self, unreachable};
 
@@ -125,15 +126,31 @@ fn generate_field(
     };
 
     let field_part = if cfg!(feature = "cbindgen") {
-        let ty_name = quote!(#ty).to_string();
+        let (ty_name, len) = match ty {
+            Type::Array(array) => {
+                let elem = &array.elem;
+                let ty_name = quote!(#elem).to_string();
+                let len: u32 = match &array.len {
+                    Expr::Lit(el) => match &el.lit {
+                        Lit::Int(val) => val.base10_parse().unwrap_or_else(|_| abort_call_site!("invalid integer literal")),
+                        _ => abort_call_site!("array length in bitfield must be a literal integer"),
+                    },
+                    _ => abort_call_site!("array lengths in bitfields must be literals"),
+                };
+                (ty_name, len)
+            }
+            Type::Path(_) => (quote!(#ty).to_string(), 1u32),
+            _ => abort_call_site!("unsupported field type"),
+        };
         if ty_name == "bool" {
             quote! {
-                #[doc = "cbindgen:bitfield=1"]
+                #[doc = concat!("cbindgen:bitfield=", #len)]
                 #name: #field_align,
             }
         } else if let (true, Ok(value)) = (ty_name.starts_with('u'), ty_name[1..].parse::<u32>()) {
+            let bitsize = value * len;
             quote! {
-                #[doc = concat!("cbindgen:bitfield=", #value)]
+                #[doc = concat!("cbindgen:bitfield=", #bitsize)]
                 #name: #field_align,
             }
         } else {
