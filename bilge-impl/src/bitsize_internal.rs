@@ -126,17 +126,19 @@ fn generate_field(
 
     let field_part = if cfg!(feature = "cbindgen") {
         let ty_name = quote!(#ty).to_string();
-        match (ty_name.starts_with('u'), ty_name[1..].parse::<u32>()) {
-            (true, Ok(value)) => {
-                quote! {
-                    #[doc = concat!("cbindgen:bitfield=", #value)]
-                    #name: #field_align,
-                }
+        if ty_name == "bool" {
+            quote! {
+                #[doc = "cbindgen:bitfield=1"]
+                #name: #field_align,
             }
-            (false, _) | (true, Err(_)) => {
-                quote! {
-                    #name: #ty,
-                }
+        } else if let (true, Ok(value)) = (ty_name.starts_with('u'), ty_name[1..].parse::<u32>()) {
+            quote! {
+                #[doc = concat!("cbindgen:bitfield=", #value)]
+                #name: #field_align,
+            }
+        } else {
+            quote! {
+                #name: #ty,
             }
         }
     } else {
