@@ -63,7 +63,7 @@ fn generate_struct(struct_data: &ItemStruct, arb_int: &TokenStream) -> TokenStre
                 .unwrap_or_else(|| quote!(0));
             let field_size = shared::generate_type_bitsize(&field.ty);
             previous_field_sizes.push(field_size);
-            generate_field(field, &field_offset, &mut fieldless_next_int)
+            generate_field(field, &field_offset, &mut fieldless_next_int, arb_int)
         })
         .unzip();
 
@@ -74,7 +74,7 @@ fn generate_struct(struct_data: &ItemStruct, arb_int: &TokenStream) -> TokenStre
         quote! {
             #[repr(C)]
             struct #ident_parts {
-                #( #field_parts )*
+                #( #field_parts )*,
             }
             #[repr(C)]
             #vis union #ident {
@@ -113,7 +113,7 @@ fn generate_struct(struct_data: &ItemStruct, arb_int: &TokenStream) -> TokenStre
 }
 
 fn generate_field(
-    field: &Field, field_offset: &TokenStream, fieldless_next_int: &mut usize,
+    field: &Field, field_offset: &TokenStream, fieldless_next_int: &mut usize, field_align: &TokenStream,
 ) -> (TokenStream, (TokenStream, (TokenStream, TokenStream))) {
     let Field { ident, ty, .. } = field;
     let name = if let Some(ident) = ident {
@@ -130,7 +130,7 @@ fn generate_field(
             (true, Ok(value)) => {
                 quote! {
                     #[doc = concat!("cbindgen:bitfield=", #value)]
-                    #name: ::core::ffi::c_uint,
+                    #name: #field_align,
                 }
             }
             (false, _) | (true, Err(_)) => {
