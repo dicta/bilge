@@ -45,7 +45,10 @@ fn generate_struct(struct_data: &ItemStruct, arb_int: &TokenStream) -> TokenStre
 
     let mut fieldless_next_int = 0;
     let mut previous_field_sizes = vec![];
-    let (accessors, (constructor_args, constructor_parts)): (Vec<TokenStream>, (Vec<TokenStream>, Vec<TokenStream>)) = fields
+    let (accessors, (field_parts, (constructor_args, constructor_parts))): (
+        Vec<TokenStream>,
+        (Vec<TokenStream>, (Vec<TokenStream>, Vec<TokenStream>)),
+    ) = fields
         .iter()
         .map(|field| {
             // offset is needed for bit-shifting
@@ -66,11 +69,32 @@ fn generate_struct(struct_data: &ItemStruct, arb_int: &TokenStream) -> TokenStre
 
     let const_ = if cfg!(feature = "nightly") { quote!(const) } else { quote!() };
 
-    quote! {
-        #vis struct #ident {
-            /// WARNING: modifying this value directly can break invariants
-            value: #arb_int,
+    let ident_define = if cfg!(feature = "cbindgen") {
+        let ident_parts: Ident = syn::parse_str(&format!("__bits_{ident}")).unwrap_or_else(unreachable);
+        quote! {
+            #[repr(C)]
+            struct #ident_parts {
+                #( #field_parts )*
+            }
+            #[repr(C)]
+            #vis union #ident {
+                /// WARNING: modifying this value directly can break invariants
+                value: #arb_int,
+                _bits: #ident_parts,
+            }
         }
+    } else {
+        quote! {
+            #[repr(C)]
+            #vis struct #ident {
+                /// WARNING: modifying this value directly can break invariants
+                value: #arb_int,
+            }
+        }
+    };
+
+    quote! {
+        #ident_define
         impl #ident {
             // #[inline]
             #[allow(clippy::too_many_arguments, clippy::type_complexity, unused_parens)]
@@ -88,7 +112,9 @@ fn generate_struct(struct_data: &ItemStruct, arb_int: &TokenStream) -> TokenStre
     }
 }
 
-fn generate_field(field: &Field, field_offset: &TokenStream, fieldless_next_int: &mut usize) -> (TokenStream, (TokenStream, TokenStream)) {
+fn generate_field(
+    field: &Field, field_offset: &TokenStream, fieldless_next_int: &mut usize,
+) -> (TokenStream, (TokenStream, (TokenStream, TokenStream))) {
     let Field { ident, ty, .. } = field;
     let name = if let Some(ident) = ident {
         ident.clone()
@@ -96,6 +122,25 @@ fn generate_field(field: &Field, field_offset: &TokenStream, fieldless_next_int:
         let name = format!("val_{fieldless_next_int}");
         *fieldless_next_int += 1;
         syn::parse_str(&name).unwrap_or_else(unreachable)
+    };
+
+    let field_part = if cfg!(feature = "cbindgen") {
+        let ty_name = quote!(#ty).to_string();
+        match (ty_name.starts_with('u'), ty_name[1..].parse::<u32>()) {
+            (true, Ok(value)) => {
+                quote! {
+                    #[doc = concat!("cbindgen:bitfield=", #value)]
+                    #name: ::core::ffi::c_uint,
+                }
+            }
+            (false, _) | (true, Err(_)) => {
+                quote! {
+                    #name: #ty,
+                }
+            }
+        }
+    } else {
+        quote!()
     };
 
     // skip reserved fields in constructors and setters
@@ -111,7 +156,7 @@ fn generate_field(field: &Field, field_offset: &TokenStream, fieldless_next_int:
             offset += #size;
             0
         } };
-        return (accessors, (constructor_arg, constructor_part));
+        return (accessors, (field_part, (constructor_arg, constructor_part)));
     }
 
     let getter = generate_getter(field, field_offset, &name);
@@ -123,7 +168,7 @@ fn generate_field(field: &Field, field_offset: &TokenStream, fieldless_next_int:
         #setter
     };
 
-    (accessors, (constructor_arg, constructor_part))
+    (accessors, (field_part, (constructor_arg, constructor_part)))
 }
 
 fn generate_getter(field: &Field, offset: &TokenStream, name: &Ident) -> TokenStream {
