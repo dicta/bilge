@@ -75,7 +75,7 @@ fn generate_struct(struct_data: &ItemStruct, arb_int: &TokenStream) -> TokenStre
         quote! {
             #[repr(C)]
             struct #ident_parts {
-                #( #field_parts )*,
+                #( #field_parts )*
             }
             #[repr(C)]
             #vis union #ident {
