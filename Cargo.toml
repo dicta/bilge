@@ -41,7 +41,7 @@ cbindgen = ["bilge-impl/cbindgen"]
 
 [dependencies]
 # cargo clippy workaround, we can't add `path = "../arbitrary-int"` as well
-arbitrary-int = "1.2.7"
+arbitrary-int = "1.3.0"
 bilge-impl = { version = "=0.2.0", path = "bilge-impl" }
 
 [dev-dependencies]
